@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RFID 一卡通刷卡考勤系统 · 系统设计文档</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f7fa; --panel:#ffffff; --border:#dce3ec; --text:#1f2937;
+    --sub:#6b7280; --primary:#2f6fed; --in:#1f9d55; --out:#e08a1e; --err:#d64545;
+    --code-bg:#0f172a; --code-fg:#e5e7eb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:"Microsoft YaHei UI","Microsoft YaHei",-apple-system,"Segoe UI",sans-serif;
+       line-height:1.75;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
+  header{background:linear-gradient(135deg,#2f6fed 0%,#1e5bd0 100%);color:#fff;
+         border-radius:16px;padding:34px 36px;margin-bottom:26px;box-shadow:0 8px 24px rgba(47,111,237,.18)}
+  header h1{margin:0 0 10px;font-size:27px;letter-spacing:.5px}
+  header p{margin:0;opacity:.92;font-size:14px}
+  .badges{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap}
+  .badge{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);
+         border-radius:999px;padding:4px 13px;font-size:12.5px}
+  section{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+          padding:24px 28px;margin-bottom:20px;box-shadow:0 2px 8px rgba(15,23,42,.03)}
+  h2{font-size:19px;margin:0 0 16px;padding-left:12px;border-left:4px solid var(--primary)}
+  h3{font-size:15.5px;margin:20px 0 10px;color:#374151}
+  p{margin:8px 0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--border);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:#f0f4fa;font-weight:600;color:#374151}
+  tr:nth-child(even) td{background:#fafbfd}
+  code{background:#eef2f7;border-radius:4px;padding:1.5px 6px;font-family:Consolas,Monaco,monospace;
+       font-size:13px;color:#b03060}
+  .mono{font-family:Consolas,Monaco,monospace}
+  pre{background:var(--code-bg);color:var(--code-fg);border-radius:10px;padding:14px 16px;
+      overflow-x:auto;font-size:13px;line-height:1.6;font-family:Consolas,Monaco,monospace}
+  .frame{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;margin:14px 0}
+  .fbox{flex:1 1 0;min-width:78px;border:2px solid var(--primary);border-radius:8px;
+        background:#eef4ff;text-align:center;padding:10px 4px}
+  .fbox .k{font-size:13px;font-weight:700;color:#1e40af}
+  .fbox .v{font-size:11.5px;color:var(--sub);margin-top:4px;font-family:Consolas,monospace}
+  .fbox.crc{border-color:#e08a1e;background:#fff7ec}
+  .fbox.crc .k{color:#b45309}
+  .fbox.adr{border-color:#0ea5a5;background:#e9fbfa}
+  .fbox.adr .k{color:#0f766e}
+  .note{background:#f0f7ff;border-left:4px solid var(--primary);border-radius:0 8px 8px 0;
+        padding:12px 16px;margin:14px 0;font-size:13.5px;color:#334155}
+  .warn{background:#fff7ec;border-left-color:#e08a1e}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:#fafbfd}
+  .card h4{margin:0 0 8px;font-size:14px;color:var(--primary)}
+  .mermaid{background:#fff;border:1px dashed #cbd5e1;border-radius:10px;padding:14px;margin:12px 0;
+           overflow-x:auto;text-align:center}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:4px 0}
+  .tick{color:var(--in);font-weight:700}
+  footer{text-align:center;color:var(--sub);font-size:12.5px;margin-top:30px}
+  @media (max-width:820px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>RFID 一卡通刷卡考勤系统 · 系统设计文档</h1>
+  <p>基于 KL9007U 超高频(UHF)读写器的学生签到 / 签退系统　·　软件工程课程分组项目</p>
+  <div class="badges">
+    <span class="badge">Python 3.8+</span>
+    <span class="badge">tkinter 界面</span>
+    <span class="badge">SQLite 数据库</span>
+    <span class="badge">pyserial 串口</span>
+    <span class="badge">UHFReader18 协议</span>
+  </div>
+</header>
+
+<section>
+  <h2>一、系统概述</h2>
+  <p>本系统用 UHF RFID 读写器实现"刷卡即考勤"：学生拿标签卡在天线上刷一次完成<strong>签到</strong>，
+  再刷一次完成<strong>签退</strong>，记录自动入库并可查询导出。</p>
+  <div class="note">
+    <strong>核心难点：</strong>KL9007U 是超高频读写器，工作在<strong>「应答模式」</strong>——它<strong>不会主动
+    往串口输出卡号</strong>，必须由上位机按 UHFReader18 协议<strong>主动发命令</strong>去读标签。
+    因此系统必须先实现协议层（组帧 / CRC 校验 / 询查 / 响应解析），这也是本项目与普通"串口读卡 demo"的本质区别。
+  </div>
+</section>
+
+<section>
+  <h2>二、硬件与通信参数</h2>
+  <table>
+    <tr><th style="width:150px">项目</th><th>值</th></tr>
+    <tr><td>读写器型号</td><td>KL9007U（协议类型 UHFReader18，固件版本 02.31）</td></tr>
+    <tr><td>接口方式</td><td>USB 转虚拟串口（CP210x / CH340 芯片，需装驱动）</td></tr>
+    <tr><td>串口号</td><td><code>COM9</code></td></tr>
+    <tr><td>波特率</td><td><strong>57600 bps</strong>，8 数据位，1 停止位，无校验（8N1）</td></tr>
+    <tr><td>工作模式</td><td>应答模式（EPC C1G2）</td></tr>
+    <tr><td>支持协议</td><td>ISO18000-6C (EPC Gen2) / ISO18000-6B</td></tr>
+    <tr><td>频率 / 功率</td><td>Chinese band2，920.125 ~ 924.875 MHz；功率 23</td></tr>
+    <tr><td>标签</td><td>UHF 电子标签，示例 EPC <code>001158230000</code>、TID <code>013902000083EA4C</code></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>三、通信协议（UHFReader18）</h2>
+  <h3>3.1 命令帧结构</h3>
+  <div class="frame">
+    <div class="fbox"><div class="k">Len</div><div class="v">1 B</div></div>
+    <div class="fbox adr"><div class="k">Adr</div><div class="v">1 B</div></div>
+    <div class="fbox adr"><div class="k">Cmd</div><div class="v">1 B</div></div>
+    <div class="fbox" style="flex:2 1 0"><div class="k">Data[]</div><div class="v">0 ~ 最多 92 B</div></div>
+    <div class="fbox crc"><div class="k">CRC-L</div><div class="v">1 B</div></div>
+    <div class="fbox crc"><div class="k">CRC-H</div><div class="v">1 B</div></div>
+  </div>
+  <p><code>Len</code> = Data 长度 + 4（不含 Len 本身）。读写器应答帧在此基础上多一个
+     <code>reCmd</code> 与一个 <code>Status</code> 字节。</p>
+
+  <h3>3.2 CRC-16 校验</h3>
+  <pre>crc = 0xFFFF                     # 初值 PRESET_VALUE
+for b in data:                   # data 范围：从 Len 到 Data 的全部字节
+    crc ^= b
+    for _ in range(8):
+        crc = (crc >> 1) ^ 0x8408 if (crc & 1) else (crc >> 1)
+# 结果低字节先发：CRC-L, CRC-H</pre>
+  <p>多项式 <code>0x8408</code>、初值 <code>0xFFFF</code>、无输出异或（等价 CRC-16/MCRF4XX）。</p>
+
+  <h3>3.3 关键命令与帧示例（读写器地址 0x00）</h3>
+  <table>
+    <tr><th>命令</th><th>含义</th><th>命令帧（十六进制）</th></tr>
+    <tr><td><code>0x01</code></td><td>询查（读取 EPC，即卡号）</td><td class="mono">04 00 01 <strong>DB 4B</strong></td></tr>
+    <tr><td><code>0x01 02 04</code></td><td>询查 TID（起始字 2，读 4 个字）</td><td class="mono">06 00 01 02 04 <strong>58 24</strong></td></tr>
+    <tr><td><code>0x21</code></td><td>读取读写器信息（握手）</td><td class="mono">04 00 21 <strong>D9 6A</strong></td></tr>
+    <tr><td><code>0x20</code></td><td>设置波特率（03 = 57600）</td><td class="mono">05 00 20 03 <strong>DE 7C</strong></td></tr>
+  </table>
+
+  <h3>3.4 询查响应解析</h3>
+  <p>响应 Data 段格式：<code>[标签个数 Num][EPC长度1][EPC1][EPC长度2][EPC2]…</code></p>
+  <pre># 例：Data = 01 06 00 11 58 23 00 00
+#   Num = 1，EPC 长度 = 6，EPC = 00 11 58 23 00 00
+#   卡号(十六进制字符串) = "001158230000"</pre>
+
+  <div class="note warn">
+    <strong>脏数据过滤（三道防线）：</strong>
+    ① 帧层：长度非法或 CRC 不通过 → 丢弃（<code>split_frames</code>）；
+    ② 卡号层：去控制符/分隔符、统一大写，非 4~32 位十六进制 → 丢弃（<code>normalize_card</code>）；
+    ③ 业务层：重复卡、陌生卡、非法文本 → 不写入有效记录。
+  </div>
+</section>
+
+<section>
+  <h2>四、系统架构（分层）</h2>
+  <div class="grid2">
+    <div class="card"><h4>协议驱动层 · uhf_reader.py</h4>
+      <p>组帧 / CRC / 收发 / 切帧 / 解析；后台读卡线程（询查 + 去抖 + 断线重连）。</p></div>
+    <div class="card"><h4>业务逻辑层 · AttendanceService</h4>
+      <p>签到 / 签退判定、30 分钟间隔、防重复、陌生卡处理。</p></div>
+    <div class="card"><h4>数据访问层 · Database</h4>
+      <p>SQLite 建表与全部 SQL（students / attendance / unknown_cards / settings）。</p></div>
+    <div class="card"><h4>界面层 · AppUI (tkinter)</h4>
+      <p>打卡台 / 历史记录 / 学生管理 / 设置 / 使用说明；经 queue 与线程通信。</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>五、用例图</h2>
+  <div class="mermaid">
+graph LR
+    S(["学生"])
+    A(["教师 / 管理员"])
+    R(["KL9007U 读写器"])
+    subgraph SYS["RFID 刷卡考勤系统"]
+        U1(("刷卡签到"))
+        U2(("刷卡签退"))
+        U3(("查询历史记录"))
+        U4(("导出 CSV"))
+        U5(("学生信息管理"))
+        U6(("刷卡绑定卡号"))
+        U7(("系统设置"))
+        U8(("读卡诊断"))
+        U9(("异常提示与留痕"))
+    end
+    S --> U1
+    S --> U2
+    A --> U3
+    A --> U4
+    A --> U5
+    A --> U6
+    A --> U7
+    A --> U8
+    U1 -. extend .-> U9
+    U2 -. extend .-> U9
+    U1 -. include .-> R
+    U2 -. include .-> R
+    U6 -. include .-> R
+  </div>
+</section>
+
+<section>
+  <h2>六、活动图：刷卡 → 签到/签退判定</h2>
+  <p>对应代码 <code>AttendanceService.handle_card()</code>。</p>
+  <div class="mermaid">
+flowchart TD
+    A([读卡线程读到卡号]) --> B[归一化 normalize_card]
+    B --> C{卡号合法?}
+    C -- 否 --> Z1[BAD_DATA 忽略]
+    C -- 是 --> D{防重复窗口内?}
+    D -- 是 --> Z2[DUPLICATE 忽略]
+    D -- 否 --> E[按卡号查 students]
+    E --> F{查到学生?}
+    F -- 否 --> Z3[UNKNOWN 友好提示 + 留痕]
+    F -- 是 --> G[查当天最后一条记录]
+    G --> H{当天有记录吗?}
+    H -- 无 --> I[签到 in]
+    H -- 有且为 in --> J{距上次签到 ≥ 30min?}
+    J -- 否 --> Z4[TOO_SOON 拒绝]
+    J -- 是 --> K[签退 out]
+    H -- 有且为 out --> I
+    I --> L[写库 attendance]
+    K --> L
+    L --> M[界面提示 + 蜂鸣]
+  </div>
+</section>
+
+<section>
+  <h2>七、活动图：读卡线程（协议层 + 容错）</h2>
+  <p>对应 <code>uhf_reader.CardReaderThread.run()</code>。</p>
+  <div class="mermaid">
+flowchart TD
+    S([线程启动]) --> O[打开串口 COM9 @ 57600 8N1]
+    O --> O2{打开成功?}
+    O2 -- 否 --> E1[提示异常, 等待重连] --> O
+    O2 -- 是 --> H[发送 0x21 握手]
+    H --> L[发送 0x01 询查]
+    L --> R{收到响应帧?}
+    R -- 否 --> E2[判定通信异常] --> E1
+    R -- 是 --> P[切帧: 帧长+CRC 校验]
+    P --> Q[解析 EPC 列表]
+    Q --> T{去抖: 该卡刚出现过?}
+    T -- 否 --> U[放入队列通知界面]
+    T -- 是 --> W[等待 poll_interval]
+    U --> W --> L
+  </div>
+</section>
+
+<section>
+  <h2>八、时序图：一次成功刷卡</h2>
+  <div class="mermaid">
+sequenceDiagram
+    participant U as 学生
+    participant D as 读写器
+    participant T as 读卡线程
+    participant B as 业务层
+    participant DB as SQLite
+    participant UI as 界面
+    U->>D: 卡放到天线上
+    T->>D: 询查 04 00 01 DB 4B
+    D-->>T: 响应帧(含 EPC)
+    T->>T: CRC 校验 + 解析 + 去抖
+    T->>UI: 队列 ("card", EPC)
+    UI->>B: handle_card(EPC)
+    B->>DB: 查学生 / 查当天最后记录
+    DB-->>B: 结果
+    B->>DB: 写入打卡记录
+    B-->>UI: Result(成功, 学生, 动作)
+    UI->>U: 大字提示 + 蜂鸣
+  </div>
+</section>
+
+<section>
+  <h2>九、数据库设计</h2>
+  <div class="grid2">
+    <div class="card"><h4>students 学生表</h4>
+      <p class="mono">id PK · student_no UNIQUE · name · class_name · card_no UNIQUE · created_at</p></div>
+    <div class="card"><h4>attendance 打卡记录表</h4>
+      <p class="mono">id PK · student_id · student_no/name/class_name(快照) · card_no · action(in/out) · ts · day</p></div>
+    <div class="card"><h4>unknown_cards 陌生卡日志</h4>
+      <p class="mono">id PK · card_no · ts</p></div>
+    <div class="card"><h4>settings 配置表</h4>
+      <p class="mono">key PK · value（interval_minutes / serial_port / serial_baud / debounce_seconds …）</p></div>
+  </div>
+  <p><strong>主键设计：</strong>统一用自增整型 <code>id</code> 作代理主键，业务唯一性用 UNIQUE 约束
+     （<code>student_no</code>、<code>card_no</code>）；打卡记录冗余学生信息作<strong>快照</strong>，
+     学生改名/删除后历史仍完整。索引：<code>day</code>、<code>(student_id, day)</code>、<code>card_no</code>。</p>
+</section>
+
+<section>
+  <h2>十、测试与风险摘要</h2>
+  <div class="grid2">
+    <div class="card"><h4>自动化测试</h4>
+      <ul>
+        <li><span class="tick">✔</span> 业务逻辑 14 条：<code>attendance.py --selftest</code></li>
+        <li><span class="tick">✔</span> 协议层 9 条：<code>python uhf_reader.py</code></li>
+        <li>覆盖：脏数据 / 重复刷卡 / 间隔不足 / 陌生卡 / 串口异常 / 粘包 / 半包</li>
+      </ul></div>
+    <div class="card"><h4>主要风险与应对</h4>
+      <ul>
+        <li><strong>通信不稳</strong> → 握手 + 自动重连 + 帧长/CRC 双校验</li>
+        <li><strong>重复打卡</strong> → 读卡层 + 业务层<b>双层去抖</b></li>
+        <li><strong>卡号伪造</strong> → 卡与学生唯一绑定；可切换读 TID</li>
+        <li><strong>数据丢失</strong> → 打卡记录快照冗余</li>
+      </ul></div>
+  </div>
+</section>
+
+<footer>
+  RFID 一卡通刷卡考勤系统 · 系统设计文档　|　配套代码：uhf_reader.py / attendance.py / read_test.py / 读卡诊断.py
+</footer>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontFamily: '"Microsoft YaHei UI","Microsoft YaHei",sans-serif',
+      primaryColor: '#eef4ff', primaryBorderColor: '#2f6fed', primaryTextColor: '#1f2937',
+      lineColor: '#64748b', secondaryColor: '#fff7ec', tertiaryColor: '#e9fbfa',
+      clusterBkg: '#f8fafc', clusterBorder: '#cbd5e1'
+    },
+    flowchart: { curve: 'basis', htmlLabels: true },
+    securityLevel: 'loose'
+  });
+</script>
+</body>
+</html>
